@@ -335,9 +335,16 @@ const PLAYER_LABELS = {
 };
 const VALID_PLAYERS = [1, 2, 3];
 
-const DEFAULT_API_BASE = "http://127.0.0.1:5500";
-const API_BASE = DEFAULT_API_BASE;
-const WS_BASE = DEFAULT_API_BASE.replace(/^http/, "ws");
+const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+function getApiBase(){
+  const currentOrigin = window.location && window.location.origin;
+  if(currentOrigin && currentOrigin !== "null" && !currentOrigin.startsWith("file://")){
+    return currentOrigin;
+  }
+  return DEFAULT_API_BASE;
+}
+const API_BASE = getApiBase();
+const WS_BASE = API_BASE.replace(/^http/, "ws");
 
 let roomCode = null;
 let ws = null;
@@ -389,10 +396,20 @@ const slotScreen = document.getElementById("slotScreen");
 const gameApp = document.getElementById("gameApp");
 
 document.getElementById("createRoomBtn").addEventListener("click", async () => {
-  const res = await fetch(API_BASE + "/api/rooms", { method: "POST" });
-  const data = await res.json();
-  document.getElementById("createResult").textContent = `Room created: ${data.code} — share this code with the others.`;
-  enterRoom(data.code);
+  const createResult = document.getElementById("createResult");
+  createResult.textContent = "Creating room...";
+  try {
+    const res = await fetch(`${API_BASE}/api/rooms`, { method: "POST" });
+    if(!res.ok){
+      const text = await res.text();
+      throw new Error(text || "The backend could not create the room.");
+    }
+    const data = await res.json();
+    createResult.textContent = `Room created: ${data.code} — share this code with the others.`;
+    enterRoom(data.code);
+  } catch (err) {
+    createResult.textContent = `Could not create room: ${err.message}`;
+  }
 });
 
 document.getElementById("joinRoomBtn").addEventListener("click", () => {
@@ -430,18 +447,22 @@ document.getElementById("loadRoomBtn").addEventListener("click", async () => {
 });
 
 async function enterRoom(code){
-  const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(code)}`);
-  if(!res.ok){
-    document.getElementById("joinError").textContent = "No room found with that code.";
-    return;
+  try {
+    const res = await fetch(`${API_BASE}/api/rooms/${encodeURIComponent(code)}`);
+    if(!res.ok){
+      document.getElementById("joinError").textContent = "No room found with that code.";
+      return;
+    }
+    roomCode = code;
+    document.getElementById("roomCodeLabel").textContent = code;
+    document.getElementById("roomCodeLabel2").textContent = code;
+    lobbyScreen.style.display = "none";
+    slotScreen.style.display = "block";
+    gameApp.style.display = "none";
+    connectWebSocket();
+  } catch (err) {
+    document.getElementById("joinError").textContent = `Could not reach the room server: ${err.message}`;
   }
-  roomCode = code;
-  document.getElementById("roomCodeLabel").textContent = code;
-  document.getElementById("roomCodeLabel2").textContent = code;
-  lobbyScreen.style.display = "none";
-  slotScreen.style.display = "block";
-  gameApp.style.display = "none";
-  connectWebSocket();
 }
 
 function connectWebSocket(){
